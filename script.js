@@ -603,48 +603,29 @@ async function buildPDF(bill) {
   // 5. Clean up the render container
   container.innerHTML = "";
 
-  // 6. Calculate A4 dimensions (mm) and the image fit
-  const A4_W  = 210;   // mm
-  const A4_H  = 297;   // mm
-  const imgW  = A4_W;
-  const imgH  = (canvas.height / canvas.width) * A4_W;
+  // 6. A4 dimensions in mm
+  const A4_W = 210;
+  const A4_H = 297;
 
-  // 7. Create jsPDF and add the image
-  //    If the invoice is taller than A4, add extra pages automatically
+  // 7. Calculate rendered image height in mm at full A4 width
+  const imgAspect = canvas.height / canvas.width;
+  let imgW = A4_W;
+  let imgH = A4_W * imgAspect;
+
+  // 8. If taller than A4, scale down to fit — never split across pages
+  if (imgH > A4_H) {
+    imgH = A4_H;
+    imgW = A4_H / imgAspect;
+  }
+
+  // 9. Center on the page (horizontally and vertically)
+  const xOffset = (A4_W - imgW) / 2;
+  const yOffset = (A4_H - imgH) / 2;
+
+  // 10. Single-page PDF — always one page regardless of invoice length
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const imgData = canvas.toDataURL("image/png");
-
-  if (imgH <= A4_H) {
-    // Fits on one page — center vertically with a small top margin
-    const topMargin = Math.max(0, (A4_H - imgH) / 2);
-    doc.addImage(imgData, "PNG", 0, topMargin, imgW, imgH);
-  } else {
-    // Taller than A4 — slice across pages
-    let yOffset = 0;
-    let remaining = imgH;
-    while (remaining > 0) {
-      const sliceH = Math.min(A4_H, remaining);
-      // srcY in canvas pixels proportional to yOffset in mm
-      const srcY      = (yOffset / imgH) * canvas.height;
-      const srcHeight = (sliceH / imgH) * canvas.height;
-
-      // Create a temporary canvas slice
-      const slice = document.createElement("canvas");
-      slice.width  = canvas.width;
-      slice.height = srcHeight;
-      slice.getContext("2d").drawImage(
-        canvas,
-        0, srcY, canvas.width, srcHeight,
-        0, 0,    canvas.width, srcHeight
-      );
-      const sliceData = slice.toDataURL("image/png");
-      if (yOffset > 0) doc.addPage();
-      doc.addImage(sliceData, "PNG", 0, 0, imgW, sliceH);
-
-      yOffset   += sliceH;
-      remaining -= sliceH;
-    }
-  }
+  doc.addImage(imgData, "PNG", xOffset, yOffset, imgW, imgH);
 
   return doc;
 }

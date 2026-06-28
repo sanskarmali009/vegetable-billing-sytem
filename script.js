@@ -563,179 +563,140 @@ function triggerPrint(invoiceHTML) {
 
 
 /* ============================================================
-   PDF GENERATION (jsPDF + autoTable)
-   Produces a styled, A4 bill — not plain text.
-   Supports multi-item bills and legacy single-veg bills.
+   PDF GENERATION — html2canvas + jsPDF
+   Renders the invoice HTML to a canvas via html2canvas, then
+   inserts the resulting image into an A4 jsPDF document.
+   This approach preserves ALL text exactly as displayed:
+   Marathi (Devanagari), Hindi, English, emojis, ₹ symbol.
+   No Helvetica text rendering — everything is captured as pixels.
    ============================================================ */
-function buildPDF(bill) {
+
+/**
+ * Core function: renders a bill object to a canvas, then
+ * returns a jsPDF doc with the invoice image on an A4 page.
+ * @param {object} bill - bill data object
+ * @returns {Promise<jsPDF>}
+ */
+async function buildPDF(bill) {
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  const pageW = 210;
-  const margin = 15;
-  const contentW = pageW - margin * 2;
-  let y = 0;
 
-  // Normalise items — support both new multi-item and old single-veg bills
-  const items = bill.items
-    ? bill.items
-    : [{ name: bill.vegName, qty: bill.qty, rate: bill.price, amount: bill.total }];
+  // 1. Build the invoice HTML string
+  const html = buildInvoiceHTML(bill);
 
-  const totalQty   = items.reduce((s, i) => s + i.qty, 0);
-  const grandTotal = items.reduce((s, i) => s + i.amount, 0);
+  // 2. Inject into the off-screen render container
+  const container = document.getElementById("pdfRenderContainer");
+  container.innerHTML = html;
 
-  /* ---------- Header background ---------- */
-  doc.setFillColor(27, 94, 32);
-  doc.rect(0, 0, pageW, 48, "F");
+  // 3. Small delay so the browser paints gradients, fonts, emojis
+  await new Promise(r => setTimeout(r, 120));
 
-  /* ---------- Farm icon ---------- */
-  doc.setFontSize(22);
-  doc.setTextColor(255, 255, 255);
-  doc.text("🌾", pageW / 2, 12, { align: "center" });
-
-  /* ---------- Farm Name ---------- */
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
-  doc.text(FARM.name, pageW / 2, 22, { align: "center" });
-
-  /* ---------- Tagline ---------- */
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text(FARM.tagline, pageW / 2, 29, { align: "center" });
-
-  /* ---------- Address & Phone ---------- */
-  doc.setFontSize(8);
-  doc.text(`Address: ${FARM.address}   |   Phone: ${FARM.phone}`, pageW / 2, 36, { align: "center" });
-
-  /* ---------- Green sub-header bar ---------- */
-  doc.setFillColor(56, 142, 60);
-  doc.rect(0, 48, pageW, 10, "F");
-  y = 51;
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text(`Invoice No: ${bill.invoiceNo}`, margin, y + 3);
-  doc.text(`Date: ${bill.dateDisp || formatDateDisplay(bill.dateISO)}`, pageW - margin, y + 3, { align: "right" });
-
-  /* ---------- Customer section ---------- */
-  doc.setFillColor(232, 245, 233);
-  doc.roundedRect(margin, 60, contentW, 22, 2, 2, "F");
-  doc.setDrawColor(165, 214, 167);
-  doc.roundedRect(margin, 60, contentW, 22, 2, 2, "S");
-
-  doc.setTextColor(122, 142, 122);
-  doc.setFontSize(7);
-  doc.setFont("helvetica", "bold");
-  doc.text("CUSTOMER NAME", margin + 4, 66);
-  doc.text("MOBILE", margin + 90, 66);
-
-  doc.setTextColor(27, 94, 32);
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.text(bill.customer, margin + 4, 73);
-  doc.text(bill.mobile || "-", margin + 90, 73);
-
-  /* ---------- Items Table ---------- */
-  y = 88;
-
-  // Build table body rows
-  const tableBody = items.map((item, idx) => [
-    String(idx + 1),
-    item.name,
-    `${item.qty} kg`,
-    `Rs.${item.rate.toFixed(2)}`,
-    `Rs.${item.amount.toFixed(2)}`,
-  ]);
-
-  // Add totals row if multiple items
-  const tableFootRows = items.length > 1
-    ? [[{ content: "Total", colSpan: 2, styles: { fontStyle: "bold", fillColor: [232,245,233], textColor: [27,94,32] } },
-        { content: `${totalQty.toFixed(2)} kg`, styles: { halign: "right", fontStyle: "bold", fillColor: [232,245,233], textColor: [27,94,32] } },
-        { content: "", styles: { fillColor: [232,245,233] } },
-        { content: `Rs.${grandTotal.toFixed(2)}`, styles: { halign: "right", fontStyle: "bold", fillColor: [232,245,233], textColor: [27,94,32] } },
-       ]]
-    : [];
-
-  doc.autoTable({
-    startY: y,
-    margin: { left: margin, right: margin },
-    head: [["#", "Vegetable / Bhaji", "Qty (kg)", "Rate (Rs./kg)", "Amount (Rs.)"]],
-    body: tableBody,
-    foot: tableFootRows,
-    headStyles: {
-      fillColor: [27, 94, 32],
-      textColor: 255,
-      fontSize: 9,
-      fontStyle: "bold",
-      halign: "left",
-    },
-    bodyStyles: { fontSize: 10, textColor: [26, 46, 26] },
-    footStyles: { fontSize: 9 },
-    columnStyles: {
-      0: { cellWidth: 10 },
-      2: { halign: "right" },
-      3: { halign: "right" },
-      4: { halign: "right", fontStyle: "bold" },
-    },
-    alternateRowStyles: { fillColor: [248, 255, 248] },
-    tableLineColor: [165, 214, 167],
-    tableLineWidth: 0.3,
-    showFoot: items.length > 1 ? "lastPage" : "never",
+  // 4. Capture with html2canvas at 2× scale for crisp output
+  const canvas = await html2canvas(container.firstElementChild, {
+    scale: 2,
+    useCORS: true,
+    backgroundColor: "#ffffff",
+    logging: false,
+    // Ensure the full element height is captured
+    windowWidth: 794,
   });
 
-  y = doc.lastAutoTable.finalY + 6;
+  // 5. Clean up the render container
+  container.innerHTML = "";
 
-  /* ---------- Grand Total box ---------- */
-  doc.setFillColor(27, 94, 32);
-  doc.roundedRect(pageW - margin - 80, y, 80, 16, 2, 2, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text("GRAND TOTAL:", pageW - margin - 77, y + 7);
-  doc.setFontSize(13);
-  doc.setFont("helvetica", "bold");
-  doc.text(`Rs.${grandTotal.toFixed(2)}`, pageW - margin - 4, y + 10, { align: "right" });
+  // 6. Calculate A4 dimensions (mm) and the image fit
+  const A4_W  = 210;   // mm
+  const A4_H  = 297;   // mm
+  const imgW  = A4_W;
+  const imgH  = (canvas.height / canvas.width) * A4_W;
 
-  y += 26;
+  // 7. Create jsPDF and add the image
+  //    If the invoice is taller than A4, add extra pages automatically
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const imgData = canvas.toDataURL("image/png");
 
-  /* ---------- Divider ---------- */
-  doc.setDrawColor(165, 214, 167);
-  doc.setLineWidth(0.5);
-  doc.line(margin, y, pageW - margin, y);
-  y += 8;
+  if (imgH <= A4_H) {
+    // Fits on one page — center vertically with a small top margin
+    const topMargin = Math.max(0, (A4_H - imgH) / 2);
+    doc.addImage(imgData, "PNG", 0, topMargin, imgW, imgH);
+  } else {
+    // Taller than A4 — slice across pages
+    let yOffset = 0;
+    let remaining = imgH;
+    while (remaining > 0) {
+      const sliceH = Math.min(A4_H, remaining);
+      // srcY in canvas pixels proportional to yOffset in mm
+      const srcY      = (yOffset / imgH) * canvas.height;
+      const srcHeight = (sliceH / imgH) * canvas.height;
 
-  /* ---------- Signature & Thank you ---------- */
-  doc.setTextColor(27, 94, 32);
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.text("Thank You! Visit Again.", margin, y + 6);
+      // Create a temporary canvas slice
+      const slice = document.createElement("canvas");
+      slice.width  = canvas.width;
+      slice.height = srcHeight;
+      slice.getContext("2d").drawImage(
+        canvas,
+        0, srcY, canvas.width, srcHeight,
+        0, 0,    canvas.width, srcHeight
+      );
+      const sliceData = slice.toDataURL("image/png");
+      if (yOffset > 0) doc.addPage();
+      doc.addImage(sliceData, "PNG", 0, 0, imgW, sliceH);
 
-  doc.setTextColor(122, 142, 122);
-  doc.setFontSize(7);
-  doc.setFont("helvetica", "normal");
-  doc.text(`${FARM.name} · ${FARM.address} · ${FARM.phone}`, margin, y + 12);
-
-  // Signature line on right
-  doc.setDrawColor(26, 46, 26);
-  doc.setLineWidth(0.5);
-  doc.line(pageW - margin - 50, y + 10, pageW - margin, y + 10);
-  doc.setFontSize(7);
-  doc.setTextColor(122, 142, 122);
-  doc.text("Authorized Signature", pageW - margin - 50, y + 15);
+      yOffset   += sliceH;
+      remaining -= sliceH;
+    }
+  }
 
   return doc;
 }
 
-function downloadPDF() {
+/**
+ * Download PDF for the bill currently previewed on the Create Bill page.
+ */
+async function downloadPDF() {
   if (!currentBillData) return;
-  buildPDF(currentBillData).save(`${currentBillData.invoiceNo}.pdf`);
-  showToast("PDF downloaded!");
+  showToast("Generating PDF…");
+  try {
+    const doc = await buildPDF(currentBillData);
+    doc.save(`${currentBillData.invoiceNo}.pdf`);
+    showToast("PDF downloaded! ✅");
+  } catch (err) {
+    console.error("PDF generation failed:", err);
+    showToast("PDF generation failed. Try again.", "error");
+  }
 }
 
-function downloadModalPDF() {
+/**
+ * Download PDF for a bill opened in the history modal.
+ */
+async function downloadModalPDF() {
   const bill = getBillById(modalBillId);
   if (!bill) return;
-  buildPDF(bill).save(`${bill.invoiceNo}.pdf`);
-  showToast("PDF downloaded!");
+  showToast("Generating PDF…");
+  try {
+    const doc = await buildPDF(bill);
+    doc.save(`${bill.invoiceNo}.pdf`);
+    showToast("PDF downloaded! ✅");
+  } catch (err) {
+    console.error("PDF generation failed:", err);
+    showToast("PDF generation failed. Try again.", "error");
+  }
+}
+
+/**
+ * Also used by history page "Download PDF" button for any saved bill.
+ */
+async function downloadBillPDF(id) {
+  const bill = getBillById(id);
+  if (!bill) return;
+  showToast("Generating PDF…");
+  try {
+    const doc = await buildPDF(bill);
+    doc.save(`${bill.invoiceNo}.pdf`);
+    showToast("PDF downloaded! ✅");
+  } catch (err) {
+    console.error("PDF generation failed:", err);
+    showToast("PDF generation failed. Try again.", "error");
+  }
 }
 
 
@@ -864,12 +825,6 @@ function clearFilters() {
 }
 
 /* ---- Action helpers ---- */
-function downloadBillPDF(id) {
-  const bill = getBillById(id);
-  if (!bill) return;
-  buildPDF(bill).save(`${bill.invoiceNo}.pdf`);
-  showToast("PDF downloaded!");
-}
 
 function confirmDeleteBill(id) {
   const bill = getBillById(id);

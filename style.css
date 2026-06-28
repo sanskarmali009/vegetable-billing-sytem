@@ -872,3 +872,18 @@ input.input-error { border-color: var(--red); }
   background: #c8e6c9;
   border-color: var(--green-main);
 }
+
+/* ============================================================
+   PDF RENDER CONTAINER
+   Positioned off-screen so html2canvas can paint it at full
+   resolution without it being visible to the user.
+   ============================================================ */
+#pdfRenderContainer {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  width: 794px;          /* A4 at 96 dpi ≈ 794px wide */
+  background: #ffffff;
+  z-index: -1;
+  pointer-events: none;
+}

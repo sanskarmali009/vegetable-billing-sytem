@@ -875,15 +875,26 @@ input.input-error { border-color: var(--red); }
 
 /* ============================================================
    PDF RENDER CONTAINER
-   Positioned off-screen so html2canvas can paint it at full
-   resolution without it being visible to the user.
+   Fixed off-screen container that always renders at a consistent
+   desktop width so html2canvas captures a stable layout on both
+   desktop and Android Chrome.
    ============================================================ */
 #pdfRenderContainer {
   position: fixed;
   left: -9999px;
   top: 0;
-  width: 794px;          /* A4 at 96 dpi ≈ 794px wide */
+  width: 780px;          /* Fixed render width — matches invoice-box layout */
+  min-height: 1px;
+  height: auto;
+  overflow: visible;
   background: #ffffff;
   z-index: -1;
   pointer-events: none;
+  /* Force the invoice-box to fill the container width */
+  box-sizing: border-box;
+}
+#pdfRenderContainer .invoice-box {
+  width: 100% !important;
+  max-width: 100% !important;
+  border-radius: 0 !important;  /* html2canvas renders border-radius poorly on some browsers */
 }

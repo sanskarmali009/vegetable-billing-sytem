@@ -564,68 +564,82 @@ function triggerPrint(invoiceHTML) {
 
 /* ============================================================
    PDF GENERATION — html2canvas + jsPDF
-   Renders the invoice HTML to a canvas via html2canvas, then
-   inserts the resulting image into an A4 jsPDF document.
-   This approach preserves ALL text exactly as displayed:
-   Marathi (Devanagari), Hindi, English, emojis, ₹ symbol.
-   No Helvetica text rendering — everything is captured as pixels.
+   Captures the invoice as a pixel-perfect image and places it
+   on a single A4 page with 8mm margins on all sides.
+   Supports Marathi, Hindi, English, emojis, ₹ symbol.
+   Always single-page — scales to fit if the invoice is tall.
    ============================================================ */
 
 /**
- * Core function: renders a bill object to a canvas, then
- * returns a jsPDF doc with the invoice image on an A4 page.
- * @param {object} bill - bill data object
+ * Core PDF builder.
+ * Renders bill HTML into the off-screen container, captures it
+ * with html2canvas, then fits the result onto one A4 page.
+ * @param {object} bill
  * @returns {Promise<jsPDF>}
  */
 async function buildPDF(bill) {
   const { jsPDF } = window.jspdf;
 
-  // 1. Build the invoice HTML string
-  const html = buildInvoiceHTML(bill);
-
-  // 2. Inject into the off-screen render container
+  /* ---- 1. Render invoice HTML into the off-screen container ---- */
   const container = document.getElementById("pdfRenderContainer");
-  container.innerHTML = html;
+  container.innerHTML = buildInvoiceHTML(bill);
+  const invoiceEl = container.firstElementChild;
 
-  // 3. Small delay so the browser paints gradients, fonts, emojis
-  await new Promise(r => setTimeout(r, 120));
+  /* ---- 2. Wait for fonts, gradients, and emojis to paint ---- */
+  await new Promise(r => setTimeout(r, 180));
 
-  // 4. Capture with html2canvas at 2× scale for crisp output
-  const canvas = await html2canvas(container.firstElementChild, {
-    scale: 2,
-    useCORS: true,
+  /* ---- 3. Read the element's natural rendered size ---- */
+  //  We use scrollWidth/scrollHeight so we capture the full content
+  //  even if it overflows. The container is already set to 780px wide
+  //  in CSS so this is always a consistent desktop-size layout.
+  const elW = invoiceEl.scrollWidth  || invoiceEl.offsetWidth  || 780;
+  const elH = invoiceEl.scrollHeight || invoiceEl.offsetHeight || 600;
+
+  /* ---- 4. Capture with html2canvas ---- */
+  //  • scale: 2 → retina-quality output (1560 × ~N px canvas)
+  //  • width/height explicitly tell html2canvas exactly what to capture
+  //  • windowWidth matches the container CSS width so layout is stable
+  const canvas = await html2canvas(invoiceEl, {
+    scale:       2,
+    useCORS:     true,
     backgroundColor: "#ffffff",
-    logging: false,
-    // Ensure the full element height is captured
-    windowWidth: 794,
+    logging:     false,
+    width:       elW,
+    height:      elH,
+    windowWidth: 780,       // matches #pdfRenderContainer CSS width
   });
 
-  // 5. Clean up the render container
+  /* ---- 5. Clean up the render container ---- */
   container.innerHTML = "";
 
-  // 6. A4 dimensions in mm
-  const A4_W = 210;
-  const A4_H = 297;
+  /* ---- 6. Calculate target image size on A4 with 8mm margins ---- */
+  const A4_W    = 210;                  // mm
+  const A4_H    = 297;                  // mm
+  const MARGIN  = 8;                    // mm each side
+  const maxW    = A4_W - MARGIN * 2;   // 194 mm
+  const maxH    = A4_H - MARGIN * 2;   // 281 mm
 
-  // 7. Calculate rendered image height in mm at full A4 width
-  const imgAspect = canvas.height / canvas.width;
-  let imgW = A4_W;
-  let imgH = A4_W * imgAspect;
+  // Aspect ratio of the captured canvas
+  const aspect  = canvas.height / canvas.width;   // h/w ratio
 
-  // 8. If taller than A4, scale down to fit — never split across pages
-  if (imgH > A4_H) {
-    imgH = A4_H;
-    imgW = A4_H / imgAspect;
+  // Start at full printable width, calculate the resulting height
+  let pdfW = maxW;
+  let pdfH = pdfW * aspect;
+
+  // If it's still taller than the printable area, constrain by height instead
+  if (pdfH > maxH) {
+    pdfH = maxH;
+    pdfW = pdfH / aspect;
   }
 
-  // 9. Center on the page (horizontally and vertically)
-  const xOffset = (A4_W - imgW) / 2;
-  const yOffset = (A4_H - imgH) / 2;
+  // Center within the printable area
+  const xOffset = MARGIN + (maxW - pdfW) / 2;
+  const yOffset = MARGIN + (maxH - pdfH) / 2;
 
-  // 10. Single-page PDF — always one page regardless of invoice length
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  const imgData = canvas.toDataURL("image/png");
-  doc.addImage(imgData, "PNG", xOffset, yOffset, imgW, imgH);
+  /* ---- 7. Create the PDF and add the image ---- */
+  const doc     = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const imgData = canvas.toDataURL("image/jpeg", 0.97);   // JPEG for smaller file size
+  doc.addImage(imgData, "JPEG", xOffset, yOffset, pdfW, pdfH);
 
   return doc;
 }

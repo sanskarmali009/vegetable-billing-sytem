@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Vegetable Billing System</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- jsPDF for PDF generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <span class="logo-icon">🌾</span>
+      <div class="logo-text">
+        <span class="logo-title">Mali Vegetables</span>
+        <span class="logo-sub">Billing System</span>
+      </div>
+    </div>
+
+    <nav class="nav-menu">
+      <a href="#" class="nav-item active" data-page="dashboard">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">Dashboard</span>
+      </a>
+      <a href="#" class="nav-item" data-page="create-bill">
+        <span class="nav-icon">🧾</span>
+        <span class="nav-label">Create Bill</span>
+      </a>
+      <a href="#" class="nav-item" data-page="bill-history">
+        <span class="nav-icon">📋</span>
+        <span class="nav-label">Bill History</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <span>🌿 Kaledhon</span>
+    </div>
+  </aside>
+
+  <!-- ===== MOBILE TOPBAR ===== -->
+  <div class="topbar">
+    <button class="menu-btn" id="menuBtn">☰</button>
+    <span class="topbar-title">🌾 Mali Vegetables Billing</span>
+  </div>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="main-content" id="mainContent">
+
+    <!-- ========== PAGE: DASHBOARD ========== -->
+    <section class="page active" id="page-dashboard">
+      <div class="page-header">
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-sub">Welcome back! Here's your farm billing overview.</p>
+      </div>
+
+      <!-- Stats Cards -->
+      <div class="stats-grid">
+        <div class="stat-card card-green">
+          <div class="stat-icon">🧾</div>
+          <div class="stat-info">
+            <span class="stat-value" id="totalBills">0</span>
+            <span class="stat-label">Total Bills Generated</span>
+          </div>
+        </div>
+        <div class="stat-card card-yellow">
+          <div class="stat-icon">💰</div>
+          <div class="stat-info">
+            <span class="stat-value" id="totalRevenue">₹0</span>
+            <span class="stat-label">Total Revenue</span>
+          </div>
+        </div>
+        <div class="stat-card card-blue">
+          <div class="stat-icon">⚖️</div>
+          <div class="stat-info">
+            <span class="stat-value" id="totalQty">0 kg</span>
+            <span class="stat-label">Total Quantity Sold</span>
+          </div>
+        </div>
+        <div class="stat-card card-orange">
+          <div class="stat-icon">📅</div>
+          <div class="stat-info">
+            <span class="stat-value" id="todaySales">₹0</span>
+            <span class="stat-label">Today's Sales</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Bills Table -->
+      <div class="card mt-2">
+        <div class="card-header">
+          <h2>Recent Bills</h2>
+          <button class="btn btn-primary btn-sm" onclick="navigateTo('create-bill')">+ New Bill</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" id="recentBillsTable">
+            <thead>
+              <tr>
+                <th>Invoice No</th>
+                <th>Customer</th>
+                <th>Vegetable</th>
+                <th>Qty (kg)</th>
+                <th>Amount</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody id="recentBillsBody">
+              <tr><td colspan="6" class="empty-msg">No bills yet. <a href="#" onclick="navigateTo('create-bill')">Create your first bill</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== PAGE: CREATE BILL ========== -->
+    <section class="page" id="page-create-bill">
+      <div class="page-header">
+        <h1 class="page-title">Create New Bill</h1>
+        <p class="page-sub">Fill in the details to generate a professional invoice.</p>
+      </div>
+
+      <div class="bill-layout">
+        <!-- FORM PANEL -->
+        <div class="card form-panel">
+          <h2 class="form-section-title">📝 Bill Details</h2>
+          <form id="billForm" novalidate>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="invoiceNo">Invoice Number</label>
+                <input type="text" id="invoiceNo" readonly class="input-readonly" placeholder="Auto Generated"/>
+              </div>
+              <div class="form-group">
+                <label for="billDate">Date</label>
+                <input type="text" id="billDate" readonly class="input-readonly"/>
+              </div>
+            </div>
+
+            <div class="form-divider">👤 Customer Information</div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="customerName">Customer Name <span class="required">*</span></label>
+                <input type="text" id="customerName" placeholder="e.g. Santosh / संतोष पाटील" required/>
+                <span class="field-hint">English or Marathi name supported</span>
+              </div>
+              <div class="form-group">
+                <label for="customerMobile">Mobile Number <span class="optional">(Optional)</span></label>
+                <input type="tel" id="customerMobile" placeholder="e.g. 9876543210" maxlength="10"/>
+              </div>
+            </div>
+
+            <div class="form-divider">🥦 Vegetable Details</div>
+
+            <!-- Multi-vegetable rows table -->
+            <div class="veg-table-wrap">
+              <table class="veg-input-table" id="vegInputTable">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Vegetable / भाजी <span class="required">*</span></th>
+                    <th>Qty (kg) <span class="required">*</span></th>
+                    <th>Rate (₹/kg) <span class="required">*</span></th>
+                    <th>Amount (₹)</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="vegRowsBody">
+                  <!-- Rows injected by JS -->
+                </tbody>
+                <tfoot>
+                  <tr class="veg-totals-row">
+                    <td colspan="2" class="veg-totals-label">Totals</td>
+                    <td id="footTotalQty" class="text-right">0 kg</td>
+                    <td></td>
+                    <td id="footGrandTotal" class="text-right veg-grand-total">₹0.00</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <!-- Add Vegetable Button -->
+            <button type="button" class="btn btn-add-veg" onclick="addVegRow()">
+              + Add Vegetable
+            </button>
+
+            <!-- Live Grand Total Display -->
+            <div class="total-display" id="totalDisplay">
+              <span class="total-label">Grand Total Amount</span>
+              <span class="total-value" id="totalAmountDisplay">₹ 0.00</span>
+              <span class="total-calc" id="totalCalc"></span>
+            </div>
+
+            <div class="form-actions">
+              <button type="button" class="btn btn-outline" onclick="resetForm()">🔄 Reset</button>
+              <button type="submit" class="btn btn-primary">🧾 Generate Bill</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- INVOICE PREVIEW PANEL -->
+        <div class="card preview-panel" id="invoicePreviewCard" style="display:none;">
+          <h2 class="form-section-title">👁️ Invoice Preview</h2>
+          <div id="invoicePreview"></div>
+          <div class="preview-actions">
+            <button class="btn btn-outline" onclick="printInvoice()">🖨️ Print</button>
+            <button class="btn btn-primary" onclick="downloadPDF()">⬇️ Download PDF</button>
+            <button class="btn btn-green" onclick="saveBillAndNew()">💾 Save & New Bill</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== PAGE: BILL HISTORY ========== -->
+    <section class="page" id="page-bill-history">
+      <div class="page-header">
+        <h1 class="page-title">Bill History</h1>
+        <p class="page-sub">View, search, and manage all your generated bills.</p>
+      </div>
+
+      <!-- Search & Filter Bar -->
+      <div class="card filter-bar">
+        <div class="filter-row">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="Search by invoice no, customer, vegetable..." oninput="filterBills()"/>
+          </div>
+          <div class="date-filter">
+            <label>From:</label>
+            <input type="date" id="filterFrom" onchange="filterBills()"/>
+            <label>To:</label>
+            <input type="date" id="filterTo" onchange="filterBills()"/>
+            <button class="btn btn-outline btn-sm" onclick="clearFilters()">✕ Clear</button>
+          </div>
+        </div>
+        <div class="filter-summary" id="filterSummary"></div>
+      </div>
+
+      <!-- History Table -->
+      <div class="card mt-1">
+        <div class="table-wrap">
+          <table class="data-table" id="historyTable">
+            <thead>
+              <tr>
+                <th>Invoice No</th>
+                <th>Customer</th>
+                <th>Mobile</th>
+                <th>Vegetable</th>
+                <th>Qty (kg)</th>
+                <th>Rate (₹/kg)</th>
+                <th>Amount</th>
+                <th>Date</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <tr><td colspan="9" class="empty-msg">No bills found.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ========== MODAL: INVOICE VIEW ========== -->
+  <div class="modal-overlay" id="modalOverlay" onclick="closeModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Invoice Details</h3>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body" id="modalInvoiceContent"></div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="printModalInvoice()">🖨️ Print</button>
+        <button class="btn btn-primary" onclick="downloadModalPDF()">⬇️ Download PDF</button>
+        <button class="btn btn-danger" onclick="deleteCurrentBill()">🗑️ Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== TOAST NOTIFICATION ========== -->
+  <div class="toast" id="toast"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
